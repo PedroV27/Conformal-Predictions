@@ -1,0 +1,11 @@
+# Material del curso (no es de mi autoría)
+Diapositivas/
+ml_exposiciones_20262.pdf
+
+# Datos (se descargan con kagglehub)
+data/
+
+# Python / Jupyter
+__pycache__/
+.ipynb_checkpoints/
+.venv/

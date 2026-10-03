@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Conformal Prediction: documento de apoyo</title>
+<style>
+  @page { size: A4; margin: 22mm 20mm 20mm 20mm; }
+  :root { --navy: #13205e; --cyan: #1ea5dc; --ink: #1b1b1b; --ink2: #52514e; --line: #e1e0d9; --soft: #eef6fb; }
+  * { box-sizing: border-box; }
+  body { font-family: "Segoe UI", system-ui, sans-serif; color: var(--ink); font-size: 10.5pt; line-height: 1.55; margin: 0;
+         -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  h1 { font-size: 24pt; color: var(--navy); margin: 0 0 4pt; line-height: 1.15; }
+  h2 { font-size: 15pt; color: var(--navy); border-bottom: 2.5pt solid var(--cyan); padding-bottom: 3pt; margin: 22pt 0 8pt; break-after: avoid; }
+  h3 { font-size: 12pt; color: var(--navy); margin: 14pt 0 4pt; break-after: avoid; }
+  p { margin: 0 0 7pt; text-align: justify; }
+  ul, ol { margin: 0 0 8pt; padding-left: 18pt; }
+  li { margin-bottom: 3pt; }
+  .sub { color: var(--ink2); font-size: 12pt; margin-bottom: 14pt; }
+  .meta { background: var(--soft); border-left: 4pt solid var(--cyan); padding: 8pt 12pt; font-size: 10pt; margin-bottom: 14pt; }
+  .eq { font-family: "Cambria Math", Cambria, serif; font-size: 12.5pt; text-align: center; background: var(--soft);
+        border-radius: 6pt; padding: 8pt 10pt; margin: 8pt 0 10pt; color: var(--navy); break-inside: avoid; }
+  .box { border: 1pt solid var(--line); border-left: 4pt solid var(--navy); border-radius: 4pt; padding: 8pt 12pt; margin: 8pt 0 10pt; break-inside: avoid; }
+  .box b:first-child { color: var(--navy); }
+  .key { background: var(--navy); color: #fff; border-radius: 5pt; padding: 8pt 12pt; margin: 8pt 0 10pt; break-inside: avoid; }
+  table { border-collapse: collapse; width: 100%; margin: 6pt 0 10pt; font-size: 9.5pt; break-inside: avoid; }
+  th { background: var(--navy); color: #fff; text-align: left; padding: 5pt 7pt; }
+  td { border-bottom: 0.75pt solid var(--line); padding: 5pt 7pt; vertical-align: top; }
+  tr:nth-child(even) td { background: #f6f6f3; }
+  figure { margin: 8pt 0 12pt; text-align: center; break-inside: avoid; }
+  figure img { max-width: 100%; }
+  figcaption { font-size: 9pt; color: var(--ink2); margin-top: 3pt; }
+  .toc li { margin-bottom: 1pt; }
+  .refs li { font-size: 9.5pt; margin-bottom: 4pt; }
+  .q { font-weight: 600; color: var(--navy); }
+  .pb { break-before: page; }
+  code { font-family: Consolas, monospace; font-size: 9.5pt; background: #f1f1ee; padding: 0 3pt; border-radius: 2pt; }
+  pre { font-family: Consolas, monospace; font-size: 8.8pt; line-height: 1.45; background: #f4f4f1; border-left: 3pt solid var(--cyan); padding: 7pt 10pt; margin: 6pt 0 10pt; white-space: pre-wrap; break-inside: avoid; }
+</style>
+</head>
+<body>
+
+<h1>Conformal Prediction</h1>
+<div class="sub">Cómo ponerle un margen de seguridad con garantía a cualquier modelo<br>Documento de estudio y guía de la exposición, explicado paso a paso</div>
+<div class="meta">
+  <b>Curso:</b> Aprendizaje Automático, MCDA 2026-2, Universidad EAFIT · <b>Profesor:</b> Andrés Vásquez Restrepo<br>
+  <b>Línea del banco de temas:</b> Sistemas · <b>Expositor:</b> Pedro Villegas Michel<br>
+  <b>Entregables asociados:</b> presentación en PDF, notebook <code>conformal_prediction_ejemplo.ipynb</code> y repositorio público en GitHub
+</div>
+
+<h3>Contenido</h3>
+<ol class="toc">
+  <li>El problema: un número no basta</li>
+  <li>La idea, con una analogía</li>
+  <li>Por qué funciona</li>
+  <li>Los cuatro pasos y la función central</li>
+  <li>Método 1: split conformal (banda fija)</li>
+  <li>Método 2: CQR (banda adaptativa)</li>
+  <li>Método 3: Mondrian (umbral por clase), con el caso de fraude</li>
+  <li>¿Cuántos datos de calibración se necesitan?</li>
+  <li>Cómo usarlo con la librería MAPIE</li>
+  <li>Aplicaciones reales y en el trabajo</li>
+  <li>Riesgos de uso</li>
+  <li>Conclusiones</li>
+  <li>Guion de la exposición y preguntas probables</li>
+  <li>Glosario</li>
+  <li>Referencias</li>
+</ol>
+
+<h2>1. El problema: un número no basta</h2>
+<p>Un modelo de aprendizaje automático casi siempre responde con <b>un solo número</b>: “el gasto de marzo será $1.200 millones” o “esta transacción es fraude con probabilidad 0,83”. Para decidir, eso se queda corto. Quien aprueba un presupuesto o prioriza una revisión de fraude necesita saber <b>qué tan lejos puede estar la realidad</b> de esa predicción.</p>
+<p>Las salidas habituales no resuelven el problema:</p>
+<ul>
+  <li>Los <b>intervalos clásicos</b> de la estadística suponen que los datos siguen una distribución normal, lo que casi nunca pasa.</li>
+  <li>Las <b>probabilidades</b> de modelos como XGBoost sirven para <b>ordenar</b> los casos (este es más riesgoso que aquel), pero no son confiables como porcentaje. En el notebook 02 del curso vimos que con <code>scale_pos_weight</code> se inflan todavía más.</li>
+</ul>
+<div class="key"><b>Conformal prediction</b> mide qué tan grandes son los errores del modelo en datos que no vio, y con eso le pone un margen de seguridad a cada predicción, con una promesa comprobable: acertar al menos el 90 % de las veces (o el porcentaje que se elija).</div>
+
+<h2>2. La idea, con una analogía</h2>
+<p>Un empleado nuevo estima el valor de las facturas a simple vista. Para saber cuánto confiar en él:</p>
+<ol>
+  <li>Le muestro <b>100 facturas cuyo valor real ya conozco</b> y que él nunca ha visto.</li>
+  <li>Anoto <b>cuánto se equivocó</b> en cada una.</li>
+  <li>Ordeno los errores de menor a mayor y miro el <b>error número 90</b>. Digamos que es de $80 mil.</li>
+  <li>Desde hoy, cuando diga “esta factura vale $1 millón”, yo digo: <b>“está entre $920 mil y $1.080.000”</b>, y acierto el 90 % de las veces.</li>
+</ol>
+<p>No necesito saber cómo piensa el empleado: solo medí sus errores en casos que no había visto. Eso es exactamente conformal prediction.</p>
+<table>
+  <tr><th style="width:34%">En la analogía</th><th style="width:28%">Nombre técnico</th><th>Qué es</th></tr>
+  <tr><td>El empleado</td><td>El modelo</td><td>Cualquier modelo ya entrenado; aquí, XGBoost</td></tr>
+  <tr><td>Las 100 facturas de prueba</td><td>Set de calibración</td><td>Datos con respuesta conocida que el modelo no usó para entrenar</td></tr>
+  <tr><td>Cuánto se equivocó en cada una</td><td>Score (de no conformidad)</td><td>Un número que mide el error del modelo en cada caso</td></tr>
+  <tr><td>El error número 90</td><td>q̂ (“q gorro”)</td><td>El umbral que separa los errores normales de los raros</td></tr>
+  <tr><td>El 90 %</td><td>1 − α</td><td>La cobertura prometida; α es el error que se acepta (10 %)</td></tr>
+</table>
+
+<h2>3. Por qué funciona</h2>
+<p>Se ponen en fila los errores de calibración, de menor a mayor. El caso nuevo es “uno más del grupo”: viene del mismo lugar que los de calibración. Por eso <b>su error puede caer en cualquier posición de la fila con la misma probabilidad</b>. Si el umbral está en la posición 90 de 100, solo hay un 10 % de probabilidad de que el error nuevo quede por encima.</p>
+<div class="box"><b>Teorema (cobertura).</b> Si los datos de calibración y el dato nuevo son intercambiables, el rango que entrega conformal contiene el valor real con probabilidad de al menos 1 − α: &nbsp; P( valor real ∈ rango ) ≥ 1 − α. Además, si no hay errores repetidos, esa probabilidad es a lo sumo 1 − α + 1/(n+1).</div>
+<p>La garantía tiene tres virtudes: no supone ninguna distribución, sirve para cualquier modelo y vale con una cantidad finita de datos. Su <b>único requisito</b> es la <b>intercambiabilidad</b>: que los datos nuevos se parezcan a los de calibración y que el orden en que llegan no importe. Si los datos cambian con el tiempo, el requisito se rompe (sección 7.5).</p>
+
+<h2>4. Los cuatro pasos y la función central</h2>
+<p>Todos los métodos siguen los mismos cuatro pasos (Papadopoulos et al., 2002; Lei et al., 2018):</p>
+<ol>
+  <li><b>Separar</b> los datos en entrenamiento, calibración y prueba.</li>
+  <li><b>Entrenar</b> el modelo solo con los datos de entrenamiento.</li>
+  <li><b>Medir los errores</b> (scores) del modelo en los datos de calibración.</li>
+  <li><b>Tomar el umbral q̂</b> y usarlo para armar el rango de cada caso nuevo.</li>
+</ol>
+<p>El paso 4 es una sola función, que se reutiliza en los tres métodos:</p>
+<pre>def conformal_quantile(scores, alpha):
+    n = len(scores)                           # cuántos errores tengo
+    k = int(np.ceil((n + 1) * (1 - alpha)))   # qué posición de la fila tomo
+    if k &gt; n:                                 # muy pocos datos:
+        return np.inf                         #   no puedo prometer nada
+    return np.sort(scores)[k - 1]             # ordeno y devuelvo el k-ésimo</pre>
+<p><b>Ejemplo a mano.</b> Con 9 errores (0,1; 0,3; 0,4; 0,7; 0,9; 1,2; 1,8; 2,5; 3,1) y una promesa del 80 %: k = (9 + 1) × 0,8 = 8, así que q̂ es el 8.º error más pequeño, 2,5.</p>
+<p><b>¿Por qué n + 1?</b> Porque el caso nuevo también entra en la fila: con 9 errores de calibración hay 10 posiciones posibles. Ese “+1” es lo que hace que la garantía valga con pocos datos. Por eso no sirve usar directamente <code>np.quantile(scores, 0.8)</code>: el umbral puede quedar por debajo del necesario.</p>
+<p>Lo único que cambia entre los tres métodos es <b>qué se usa como “error”</b>:</p>
+<table>
+  <tr><th style="width:24%">Método</th><th style="width:38%">¿Qué es el “error”?</th><th>¿Qué entrega?</th></tr>
+  <tr><td><b>1. Split conformal</b> (banda fija)</td><td>La distancia entre el valor real y la predicción</td><td>Predicción ± q̂: el mismo margen para todos</td></tr>
+  <tr><td><b>2. CQR</b> (banda adaptativa)</td><td>Cuánto se sale el valor real de una banda “piso–techo”</td><td>Un margen ancho donde hay duda y angosto donde no</td></tr>
+  <tr><td><b>3. Mondrian</b> (umbral por clase)</td><td>1 − la probabilidad que el modelo le dio a la respuesta correcta, medido por separado en cada clase</td><td>La garantía se cumple dentro de cada clase</td></tr>
+</table>
+
+<h2>5. Método 1: split conformal (banda fija)</h2>
+<p><b>Datos del ejemplo.</b> Para los métodos 1 y 2 se simularon 3.000 puntos con y = x·sen(x) más un ruido que <b>crece con x</b>: a la izquierda los datos están muy juntos y a la derecha muy dispersos. Reparto: 1.500 para entrenar, 750 para calibrar y 750 para probar. Promesa pedida: 90 %.</p>
+<pre># Paso 1. Entreno el modelo (solo con train)
+model = XGBRegressor(max_depth=3).fit(X_train, y_train)
+# Paso 2. Mido sus errores en calibración
+errores = np.abs(y_cal - model.predict(X_cal))
+# Paso 3. Saco el umbral q_hat
+q_hat = conformal_quantile(errores, alpha=0.10)
+# Paso 4. Predicción ± q_hat
+pred = model.predict(X_new)
+lower, upper = pred - q_hat, pred + q_hat</pre>
+<p><b>En palabras:</b> el “error” es cuánto se equivocó el modelo en cada dato de calibración. q̂ es el error que solo se supera el 10 % de las veces (aquí, 3,78). El intervalo es la predicción más y menos ese valor.</p>
+<p><b>Resultado:</b> cubre el 91,5 % de los datos de prueba, es decir, <b>cumple la promesa del 90 %</b>. Su limitación es que el margen es <b>igual para todos</b> los casos (7,56 de ancho), sean fáciles o difíciles.</p>
+
+<h2>6. Método 2: CQR (banda adaptativa)</h2>
+<p>La regresión cuantílica conformalizada (Romano, Patterson &amp; Candès, 2019) busca un margen que se adapte a cada caso.</p>
+<pre># Paso 1. Dos XGBoost: uno para el "piso" y otro para el "techo"
+q = dict(objective="reg:quantileerror", max_depth=3)
+piso  = XGBRegressor(quantile_alpha=0.05, **q).fit(X_train, y_train)
+techo = XGBRegressor(quantile_alpha=0.95, **q).fit(X_train, y_train)
+# Paso 2. Error = cuánto se sale el dato real de la banda
+errores = np.maximum(piso.predict(X_cal) - y_cal, y_cal - techo.predict(X_cal))
+# Paso 3. Saco el umbral q_hat
+q_hat = conformal_quantile(errores, alpha=0.10)
+# Paso 4. Corrijo la banda con q_hat
+lower, upper = piso.predict(X_new) - q_hat, techo.predict(X_new) + q_hat</pre>
+<p><b>En palabras:</b></p>
+<ol>
+  <li>Se entrenan <b>dos XGBoost</b>: uno predice el “piso” (el valor por debajo del cual cae el 5 % de los casos) y otro el “techo” (95 %). Esa banda ya es ancha donde hay duda y angosta donde no.</li>
+  <li>Pero esa banda <b>no trae garantía</b>. Entonces el “error” es <b>cuánto se sale</b> cada dato real de la banda (negativo si quedó adentro).</li>
+  <li>Con q̂ se <b>corrige</b> la banda: si cubría de menos, q̂ es positivo y la ensancha; si cubría de más, q̂ es negativo y la estrecha.</li>
+</ol>
+<p><b>Resultado:</b> la banda sin corregir cubría 92,5 % (de más); CQR la estrechó (q̂ = −0,24) y quedó cubriendo el 90,4 %.</p>
+
+<h3>6.1 Comparación de los métodos 1 y 2</h3>
+<figure><img src="../figuras/a_regresion_split_vs_cqr.png" alt=""><figcaption>Figura 1. Mismos datos, dos márgenes. Izquierda: banda fija. Derecha: banda adaptativa (CQR).</figcaption></figure>
+<table>
+  <tr><th>Método</th><th>¿Cumple el 90 %?</th><th>Ancho promedio</th><th>Lectura</th></tr>
+  <tr><td>1. Split conformal (banda fija)</td><td>Sí: 91,5 %</td><td>7,56</td><td>Mismo ancho en todas partes</td></tr>
+  <tr><td><b>2. CQR (banda adaptativa)</b></td><td>Sí: 90,4 %</td><td><b>6,61</b></td><td><b>12 % más angosto</b>: se abre solo donde hace falta</td></tr>
+</table>
+<p>Los dos cumplen la promesa. CQR lo hace con un intervalo más angosto, que es más útil para decidir.</p>
+
+<h3>6.2 Advertencia: la garantía es un promedio</h3>
+<figure><img src="../figuras/a_cobertura_condicional.png" alt="" style="max-width:70%"><figcaption>Figura 2. Porcentaje de aciertos por zona de x.</figcaption></figure>
+<table>
+  <tr><th>Zona</th><th>Banda fija</th><th>CQR</th></tr>
+  <tr><td>Poco ruido: x entre 0 y 2,5</td><td>100 %</td><td>98,6 %</td></tr>
+  <tr><td>Mucho ruido: x entre 7,5 y 10</td><td><b>76,7 %</b></td><td>86,5 %</td></tr>
+</table>
+<p>La banda fija cumple el 90 % <b>en promedio</b>, pero lo hace acertando siempre donde es fácil y fallando más donde es difícil. Esto se llama <b>cobertura marginal</b>: la promesa vale para el conjunto de los datos, no para cada zona o subgrupo. CQR reparte mejor los aciertos. Cuando el subgrupo que importa es una <b>clase</b> (por ejemplo, los fraudes), se necesita el método 3.</p>
+
+<h2>7. Método 3: Mondrian (umbral por clase), con el caso de fraude</h2>
+<h3>7.1 En clasificación la respuesta es un conjunto</h3>
+<p>El modelo ya no dice “es fraude” o “no es fraude”. Dice: <b>“estas son las respuestas que no puedo descartar”</b>.</p>
+<table>
+  <tr><th style="width:30%">Conjunto</th><th>Qué significa</th><th style="width:24%">Decisión</th></tr>
+  <tr><td>{legítima}</td><td>El modelo está seguro de que es legítima</td><td>No se alerta</td></tr>
+  <tr><td>{fraude} o {legítima, fraude}</td><td>No se puede descartar que sea fraude</td><td><b>Se alerta</b></td></tr>
+  <tr><td>Vacío</td><td>Caso muy raro: ninguna respuesta convence</td><td>No se alerta</td></tr>
+</table>
+<p><b>Regla de decisión:</b> se alerta si “fraude” está en el conjunto. Con esa regla se pueden usar las <b>métricas del curso</b>: recall (de los fraudes reales, cuántos detecto), precisión (de mis alertas, cuántas son fraude) y matriz de confusión.</p>
+
+<h3>7.2 El código, paso a paso</h3>
+<p><b>Primero: medir el error en cada transacción de calibración.</b></p>
+<pre># Paso 1. Entreno el XGBoost del notebook 02 (solo con train)
+clf = XGBClassifier(n_estimators=300, max_depth=6, scale_pos_weight=spw,
+                    enable_categorical=True).fit(X_train, y_train)
+# Paso 2. Mido el error en cada transacción de calibración
+P_cal = clf.predict_proba(X_cal)                      # 2 columnas: [p(legítima), p(fraude)]
+p_real = P_cal[np.arange(len(y_cal)), y_cal]          # la probabilidad de su clase REAL
+s_cal = 1 - p_real                                    # el error: lo que le faltó para llegar a 1</pre>
+<table>
+  <tr><th>La transacción era…</th><th>El modelo dijo p(fraude) =</th><th>Probabilidad de la respuesta correcta</th><th>Error</th></tr>
+  <tr><td>Legítima</td><td>0,001</td><td>0,999</td><td><b>0,001</b>: acertó</td></tr>
+  <tr><td>Fraude</td><td>0,98</td><td>0,98</td><td><b>0,02</b>: acertó</td></tr>
+  <tr><td>Fraude</td><td>0,10</td><td>0,10</td><td><b>0,90</b>: se equivocó</td></tr>
+</table>
+<p>Un error cerca de 0 significa que el modelo acertó con seguridad; cerca de 1, que se equivocó.</p>
+<p><b>Después: sacar el umbral y armar el conjunto.</b></p>
+<pre># Paso 3. Saco el umbral q_hat
+q_unico  = conformal_quantile(s_cal, 0.05)               # MÉTODO 1: con todos
+q_legit  = conformal_quantile(s_cal[y_cal == 0], 0.05)   # MÉTODO 3: solo legítimas
+q_fraude = conformal_quantile(s_cal[y_cal == 1], 0.05)   # MÉTODO 3: solo fraudes
+# Paso 4. Una etiqueta entra al conjunto si su error (1 - p) es &lt;= su umbral
+P = clf.predict_proba(X_test)
+conjunto_m1 = (1 - P) &lt;= q_unico                 # mismo umbral para las 2 etiquetas
+conjunto_m3 = (1 - P) &lt;= [q_legit, q_fraude]     # un umbral para cada etiqueta
+# Decisión: alerto si "fraude" (columna 1) quedó dentro del conjunto
+alerta = conjunto_m3[:, 1]</pre>
+<table>
+  <tr><th style="width:24%">Método</th><th>Umbral q̂</th><th>En la práctica, alerta si…</th></tr>
+  <tr><td>1. Un solo umbral</td><td>0,003 (calculado con las 60.000 transacciones)</td><td>p(fraude) ≥ 0,997: casi nunca</td></tr>
+  <tr><td><b>3. Mondrian</b></td><td>Legítimas: 0,003 (59.652 casos)<br>Fraudes: 0,949 (348 casos)</td><td><b>p(fraude) ≥ 0,051</b></td></tr>
+</table>
+<p>Es el mismo código. La única diferencia es que Mondrian calcula el umbral de los fraudes <b>solo con los fraudes</b> (Vovk, 2012), y por eso es mucho menos exigente para alertar. En el notebook estos mismos pasos están dentro de las funciones <code>sets_split</code> y <code>sets_mondrian</code>.</p>
+
+<h3>7.3 El montaje del ejercicio</h3>
+<ol>
+  <li><b>Datos:</b> 300.000 transacciones del dataset de fraude del curso (Kaggle, kartik2112); solo el 0,58 % son fraude.</li>
+  <li><b>Reparto:</b> 180.000 para entrenar, 60.000 para calibrar (348 fraudes) y 60.000 para probar.</li>
+  <li><b>Modelo:</b> el <code>XGBClassifier</code> del notebook 02 (300 árboles, profundidad 6, <code>scale_pos_weight</code> ≈ 172), con PR-AUC de 0,912 en prueba.</li>
+  <li><b>Promesa pedida:</b> 95 %.</li>
+</ol>
+<figure><img src="../figuras/b_scores_mondrian.png" alt=""><figcaption>Figura 3. Errores de calibración de cada clase. Cada barra cuenta cuántas transacciones tuvieron ese error (0 = el modelo acertó, 1 = se equivocó) y la línea punteada es el umbral q̂, que deja el 95 % de los casos a su izquierda.</figcaption></figure>
+
+<p><b>Cómo leer la figura 3.</b> En las <b>legítimas</b> (izquierda) casi todas las barras están pegadas al 0: el modelo las acierta con facilidad, y por eso su umbral es muy pequeño (0,003). En los <b>fraudes</b> (derecha) la mayoría también está cerca de 0, pero hay varios casos cerca de 1: son fraudes que el modelo no reconoció. Para dejar el 95 % de los fraudes a la izquierda, el umbral tiene que irse hasta 0,949. El eje vertical está en escala logarítmica para que se alcancen a ver las barras pequeñas.</p>
+<h3>7.4 Comparación de los métodos 1 y 3</h3>
+<table>
+  <tr><th>Regla de decisión (datos de prueba)</th><th>Recall</th><th>Precisión</th><th>Alertas</th><th>¿Qué promete?</th></tr>
+  <tr><td>Umbral 0,5 (sin conformal)</td><td>87,0 %</td><td>75,1 %</td><td>402</td><td>Nada</td></tr>
+  <tr><td>1. Split conformal 95 %</td><td>62,2 %</td><td>99,5 %</td><td>217</td><td>95 % en el total (95,3 %), no en los fraudes</td></tr>
+  <tr><td><b>3. Mondrian 95 %</b></td><td><b>96,0 %</b></td><td>35,3 %</td><td>943</td><td><b>Detectar ≥ 95 % de los fraudes</b></td></tr>
+</table>
+<figure><img src="../figuras/b_reglas_recall_precision.png" alt=""><figcaption>Figura 4. Recall y precisión de cada regla en los datos de prueba.</figcaption></figure>
+<p><b>¿Por qué pasa esto?</b> El 99,4 % de las transacciones son legítimas. Con un solo umbral, ellas deciden el cálculo: la promesa del 95 % se cumple <b>en el total</b>, pero solo se detecta el 62 % de los fraudes. Mondrian calcula un umbral solo con los fraudes, así que la promesa se cumple <b>dentro de esa clase</b>: detecta el 96 % de los fraudes. Eso es una <b>garantía de recall</b>.</p>
+<p><b>El precio:</b> más alertas (943 frente a 217) y menos precisión (35 %). A cambio, casi ningún fraude se escapa: de 347 fraudes en prueba, solo 14 quedaron sin alertar.</p>
+<figure><img src="../figuras/b_recall_vs_alpha.png" alt=""><figcaption>Figura 5. Izquierda: Mondrian cumple lo prometido en cualquier nivel (sigue la diagonal); el umbral único no. Derecha: porcentaje de transacciones alertadas.</figcaption></figure>
+<p>A más recall prometido, más alertas: con 95 % se alerta el 1,6 % de las transacciones; con 99 %, el 9,3 %, unas seis veces más. El nivel se elige según cuántas revisiones puede atender el equipo.</p>
+
+<h3>7.5 La prueba de fuego: meses futuros</h3>
+<figure><img src="../figuras/b_matrices_confusion.png" alt="" style="max-width:86%"><figcaption>Figura 6. Matrices de confusión de Mondrian 95 %. Izquierda: datos de prueba, 60.000 transacciones del mismo periodo que el modelo no usó ni para entrenar ni para calibrar. Derecha: datos futuros, 555.719 transacciones de los meses siguientes (fraudTest.csv).</figcaption></figure>
+<table>
+  <tr><th>Mondrian 95 %</th><th>Recall</th><th>Precisión</th><th>Fraudes no detectados</th></tr>
+  <tr><td>Datos de prueba (mismo periodo)</td><td>96,0 %</td><td>35,3 %</td><td>14 de 347</td></tr>
+  <tr><td>Datos futuros (meses siguientes)</td><td><b>92,7 %</b></td><td>26,2 %</td><td>156 de 2.145</td></tr>
+</table>
+<p>En los meses siguientes el recall bajó a 92,7 %, <b>menos del 95 % prometido</b>. La razón: los datos cambiaron (el fraude pasó de 0,58 % a 0,39 %) y ya no se parecen a los de calibración. No falló el método, se rompió su único requisito. <b>Lección:</b> en producción hay que vigilar el recall y recalibrar con datos recientes.</p>
+
+<h2>8. ¿Cuántos datos de calibración se necesitan?</h2>
+<p>La promesa del 90 % es “en promedio sobre muchos sets de calibración”. Con un set concreto, lo que realmente se obtiene varía un poco, y varía más cuantos menos datos haya (sigue una distribución Beta; Vovk, 2012):</p>
+<figure><img src="../figuras/c_variabilidad_calibracion.png" alt="" style="max-width:72%"><figcaption>Figura 7. Lo que realmente se obtiene al prometer 90 %, según el tamaño de calibración.</figcaption></figure>
+<table>
+  <tr><th>Datos de calibración</th><th>Lo que realmente se obtiene (en 9 de cada 10 casos)</th></tr>
+  <tr><td>50</td><td>entre 82,6 % y 96,0 %</td></tr>
+  <tr><td>500</td><td>entre 87,7 % y 92,1 %</td></tr>
+  <tr><td>5.000</td><td>entre 89,3 % y 90,7 %</td></tr>
+</table>
+<p>En Mondrian la cuenta es <b>por clase</b>: los fraudes se calibraron con solo 348 casos, así que su recall real puede moverse 2 o 3 puntos alrededor del 95 %.</p>
+
+<h2>9. Cómo usarlo con la librería MAPIE</h2>
+<p>Para no programarlo a mano, la librería <b>MAPIE</b> (versión 1.x, compatible con scikit-learn) trae los métodos 1 y 2. Siempre son dos pasos: <code>conformalize</code> para calibrar y <code>predict_interval</code> o <code>predict_set</code> para predecir.</p>
+<pre>from mapie.regression import SplitConformalRegressor, ConformalizedQuantileRegressor
+from mapie.classification import SplitConformalClassifier
+
+# MÉTODO 1 en regresión: banda fija
+reg = SplitConformalRegressor(model, confidence_level=0.90, prefit=True)
+reg.conformalize(X_cal, y_cal)                      # calibrar
+y_pred, intervalos = reg.predict_interval(X_test)   # predecir con intervalo
+
+# MÉTODO 2: CQR, con los XGBoost [piso, techo, mediana]
+cqr = ConformalizedQuantileRegressor([piso, techo, mediana], confidence_level=0.90, prefit=True)
+cqr.conformalize(X_cal, y_cal)
+
+# MÉTODO 1 en clasificación: conjuntos con un umbral único
+cls = SplitConformalClassifier(clf, confidence_level=0.95, prefit=True)
+cls.conformalize(X_cal, y_cal)
+y_pred, conjuntos = cls.predict_set(X_test)</pre>
+<table>
+  <tr><th>Caso</th><th>Código a mano</th><th>MAPIE</th></tr>
+  <tr><td>1. Split conformal (regresión)</td><td>91,5 %</td><td>91,5 %</td></tr>
+  <tr><td>2. CQR</td><td>90,4 %</td><td>90,9 %</td></tr>
+  <tr><td>1. Split conformal (fraude, cobertura total)</td><td>95,3 %</td><td>95,3 %</td></tr>
+</table>
+<p>Con los mismos XGBoost del ejemplo, MAPIE da los mismos resultados (en CQR hay una diferencia mínima por detalles internos). <code>prefit=True</code> indica que el modelo ya está entrenado. <b>Mondrian por clase no viene incluido</b>: se hace a mano con <code>conformal_quantile</code>, como en la sección 7.2. Instalación: <code>pip install mapie xgboost</code>.</p>
+
+<h2>10. Aplicaciones reales y en el trabajo</h2>
+<ul>
+  <li><b>Descubrimiento de fármacos.</b> AstraZeneca lo usa para decidir en qué predicciones sobre moléculas confiar (Norinder et al., 2014).</li>
+  <li><b>Pronóstico de ventas y energía.</b> Rangos de demanda en lugar de un solo número; viene en librerías como MAPIE y las de Nixtla.</li>
+  <li><b>Medicina.</b> Una lista corta de diagnósticos posibles, con garantía, para apoyar al especialista.</li>
+  <li><b>Riesgo y fraude.</b> Priorizar revisiones garantizando el recall de la clase rara, como en el ejemplo.</li>
+  <li><b>Modelos de lenguaje.</b> Conjuntos de respuestas que contienen una correcta con probabilidad garantizada (Quach et al., 2024).</li>
+  <li><b>Sistemas autónomos.</b> Zonas donde puede estar un objeto, con garantía, para planear con seguridad.</li>
+</ul>
+<h3>Aplicación en el trabajo: gastos administrativos bajo NIIF 17</h3>
+<p>En una aseguradora, la norma NIIF 17 exige separar los gastos <b>atribuibles</b> a los contratos de seguro de los <b>no atribuibles</b>. Cada combinación centro de costos–cuenta contable se clasifica en una de las dos categorías según la política corporativa, y cada vez que aparecen combinaciones nuevas hay que clasificarlas.</p>
+<p>Un XGBoost puede aprender la clasificación vigente y sugerir la categoría de las combinaciones nuevas. <b>Mondrian</b> aporta la regla de decisión, con garantía en cada categoría: si el conjunto trae una sola categoría, la combinación se asigna automáticamente y de forma consistente con la política; si trae las dos, es un caso fronterizo que pasa a revisión del experto, con la sugerencia del modelo como apoyo. Para el presupuesto de gastos, <b>CQR</b> permite entregar un rango confiable en lugar de un número único.</p>
+
+<h2>11. Riesgos de uso</h2>
+<table>
+  <tr><th style="width:26%">Riesgo</th><th>Qué pasa</th><th style="width:34%">Qué hacer</th></tr>
+  <tr><td>Los datos cambian con el tiempo</td><td>La promesa se debilita sin avisar (en el ejemplo: 92,7 % en vez de 95 %).</td><td>Vigilar el resultado en producción y recalibrar con datos recientes.</td></tr>
+  <tr><td>La promesa es un promedio</td><td>Se cumple en el total, pero puede fallar en una zona o un grupo.</td><td>CQR si la duda cambia de un caso a otro; Mondrian si importa una clase.</td></tr>
+  <tr><td>Pocos datos de calibración</td><td>Lo que realmente se obtiene oscila alrededor de lo prometido.</td><td>Idealmente 1.000 datos o más (por clase, en Mondrian).</td></tr>
+  <tr><td>Usar la calibración para entrenar</td><td>El modelo “ya vio” esos datos, sus errores salen pequeños y la promesa se rompe.</td><td>Separar tres partes y usar la calibración una sola vez.</td></tr>
+  <tr><td>Un modelo malo</td><td>La promesa se cumple igual, pero con rangos enormes que no sirven para decidir.</td><td>Mejorar el modelo: mejores modelos dan rangos más angostos.</td></tr>
+  <tr><td>Explicarlo mal</td><td>“Este intervalo tiene 90 % de probabilidad” es incorrecto.</td><td>Decir: “este método acierta el 90 % de las veces”.</td></tr>
+  <tr><td>Prometer demasiado</td><td>Pedir 99 % de recall multiplica las alertas por seis.</td><td>Elegir el nivel según la capacidad de revisión del equipo.</td></tr>
+</table>
+
+<h2>12. Conclusiones</h2>
+<ol>
+  <li>Conformal prediction le pone una garantía a <b>cualquier</b> modelo: solo mide sus errores en datos que no vio.</li>
+  <li>Es sencillo y barato: un set de calibración, una medida de error y una función de cinco líneas.</li>
+  <li><b>Banda fija</b> para empezar, <b>CQR</b> cuando la duda cambia de un caso a otro y <b>Mondrian</b> cuando una clase importa más. En fraude, Mondrian detectó el 96 % de los fraudes, frente al 62 % del umbral único.</li>
+  <li>La garantía vale mientras los datos no cambien: en los meses futuros bajó a 92,7 %. En producción hay que vigilar y recalibrar.</li>
+</ol>
+
+<h2 class="pb">13. Guion de la exposición (20 minutos) y preguntas probables</h2>
+<table>
+  <tr><th style="width:9%">Diap.</th><th style="width:10%">Tiempo</th><th>Qué decir</th></tr>
+  <tr><td>1–2</td><td>0:40</td><td>Presentación y ruta: problema, idea, tres métodos comparados, ejemplo de fraude, riesgos.</td></tr>
+  <tr><td>3</td><td>0:50</td><td>Un número solo no dice qué tan lejos puede estar la realidad; necesitamos un margen comprobable.</td></tr>
+  <tr><td>4</td><td>1:20</td><td>Contar la analogía del empleado en sus 4 pasos y leer la tabla de equivalencias.</td></tr>
+  <tr><td>5</td><td>0:40</td><td>La promesa: sin supuestos, para cualquier modelo, con los datos que haya. Único requisito: que los datos nuevos se parezcan.</td></tr>
+  <tr><td>6</td><td>1:00</td><td>La fila de errores: el caso nuevo cae en cualquier posición con igual probabilidad.</td></tr>
+  <tr><td>7–8</td><td>1:40</td><td>Los cuatro pasos; la función ordena y devuelve el k-ésimo; ejemplo con 9 números (q̂ = 2,5).</td></tr>
+  <tr><td>9</td><td>0:40</td><td>Tres métodos: lo único que cambia es qué llamamos “error”.</td></tr>
+  <tr><td>10–11</td><td>1:45</td><td>Señalar los comentarios “Paso 1 a 4” en cada código: banda fija y luego piso–techo.</td></tr>
+  <tr><td>12–13</td><td>1:30</td><td>Comparar: ambos cumplen, CQR es 12 % más angosto; la banda fija acierta 100 % en lo fácil y 77 % en lo difícil.</td></tr>
+  <tr><td>14</td><td>0:50</td><td>En clasificación la respuesta es un conjunto; alerto si “fraude” está adentro.</td></tr>
+  <tr><td>15–16</td><td>1:30</td><td>Primero se mide el error de cada transacción (tabla de 3 casos); después un umbral por clase: alerta si p(fraude) ≥ 0,051 en vez de 0,997.</td></tr>
+  <tr><td>17</td><td>0:45</td><td>Montaje: datos, reparto, XGBoost del notebook 02, promesa del 95 %. Leer la gráfica: legítimas pegadas a 0, fraudes con casos cerca de 1.</td></tr>
+  <tr><td>18–19</td><td>1:50</td><td>Comparar recall: 87 %, 62 % y 96 %. Explicar por qué el 99 % legítimo tapa a los fraudes.</td></tr>
+  <tr><td>20</td><td>0:45</td><td>A más recall prometido, más alertas (1,6 % frente a 9,3 %).</td></tr>
+  <tr><td>21</td><td>1:00</td><td>Izquierda: datos de prueba, cumple (96 %). Derecha: meses futuros, cae a 92,7 % porque los datos cambiaron. Vigilar y recalibrar.</td></tr>
+  <tr><td>22–23</td><td>1:00</td><td>Riesgos y cuántos datos de calibración hacen falta.</td></tr>
+  <tr><td>24</td><td>0:50</td><td>MAPIE: calibrar con <code>conformalize</code> y predecir.</td></tr>
+  <tr><td>25–26</td><td>0:50</td><td>Aplicaciones reales y en mi trabajo (NIIF 17).</td></tr>
+  <tr><td>27–29</td><td>0:50</td><td>Tres ideas para llevarse, referencias y preguntas.</td></tr>
+</table>
+
+<h3>Preguntas probables y respuestas sugeridas</h3>
+<p><span class="q">¿En qué se diferencia de calibrar probabilidades?</span> Calibrar busca que una probabilidad de 0,8 signifique 80 %, pero no da una garantía formal ni una regla de decisión. Conformal no necesita probabilidades confiables: solo usa el orden de los casos. Por eso funciona incluso con <code>scale_pos_weight</code>.</p>
+<p><span class="q">¿Por qué no usar simplemente un umbral sobre la probabilidad?</span> Un umbral fijo como 0,5 dio 87 % de recall, pero nadie sabía de antemano cuánto iba a dar. Mondrian es, en el fondo, un umbral (0,051 en el ejemplo), pero elegido de forma que el recall mínimo quede garantizado antes de mirar los datos de prueba.</p>
+<p><span class="q">¿Qué pasa si los datos cambian con el tiempo?</span> Se rompe el requisito y la promesa se debilita, como en el ejemplo (92,7 %). En la práctica se recalibra con datos recientes y se vigila el resultado.</p>
+<p><span class="q">¿Cuántos datos de calibración se necesitan?</span> Con 500, una promesa de 90 % queda entre 88 % y 92 %; con 5.000, entre 89 % y 91 %. En Mondrian la cuenta es por clase.</p>
+<p><span class="q">¿Por qué aparecen conjuntos vacíos?</span> Porque ninguna etiqueta alcanza su umbral. Pasa con modelos muy seguros; son casos atípicos y en el ejemplo no generan alerta.</p>
+<p><span class="q">¿Por qué CQR puede estrechar la banda?</span> Porque q̂ puede ser negativo: si la banda “piso–techo” ya cubría de más (92,5 %), la corrección la ajusta hacia adentro hasta el 90 %.</p>
+<p><span class="q">¿Sirve con un modelo malo?</span> Sí, la promesa se cumple igual, pero los rangos serán muy anchos y poco útiles. Un mejor modelo da rangos más angostos.</p>
+<p><span class="q">¿Garantiza un trato parejo entre grupos?</span> No por defecto, porque la promesa es un promedio. Con Mondrian se garantiza dentro de cada grupo que se defina.</p>
+
+<h2>14. Glosario</h2>
+<table>
+  <tr><th style="width:28%">Término</th><th>Significado sencillo</th></tr>
+  <tr><td>Set de calibración</td><td>Datos con respuesta conocida que el modelo no vio al entrenar; se usan para medir sus errores.</td></tr>
+  <tr><td>Score de no conformidad</td><td>El “error” del modelo en un caso: qué tan mal encaja ese caso con lo que el modelo esperaba.</td></tr>
+  <tr><td>q̂ (q gorro)</td><td>El umbral: el error que solo se supera α de las veces.</td></tr>
+  <tr><td>α (alfa)</td><td>El error que se acepta. Con α = 0,05 se promete acertar el 95 %.</td></tr>
+  <tr><td>Cobertura</td><td>Porcentaje de veces que el valor real queda dentro del rango entregado.</td></tr>
+  <tr><td>Cobertura marginal</td><td>La cobertura se cumple en el total de los datos, no en cada subgrupo.</td></tr>
+  <tr><td>Intercambiabilidad</td><td>Los datos nuevos se parecen a los de calibración y el orden en que llegan no importa.</td></tr>
+  <tr><td>Recall</td><td>De los fraudes reales, qué porcentaje se detectó.</td></tr>
+  <tr><td>Precisión</td><td>De las alertas generadas, qué porcentaje era realmente fraude.</td></tr>
+  <tr><td>Regresión cuantílica</td><td>Un modelo que, en lugar del valor medio, predice un “piso” o un “techo”.</td></tr>
+</table>
+
+<h2>15. Referencias</h2>
+<ul class="refs">
+  <li>Angelopoulos, A. N. &amp; Bates, S. (2023). Conformal prediction: A gentle introduction. <i>Foundations and Trends in Machine Learning</i>, 16(4), 494–591.</li>
+  <li>Chen, T. &amp; Guestrin, C. (2016). XGBoost: A scalable tree boosting system. <i>Proceedings of the 22nd ACM SIGKDD Conference (KDD)</i>.</li>
+  <li>Lei, J., G’Sell, M., Rinaldo, A., Tibshirani, R. J. &amp; Wasserman, L. (2018). Distribution-free predictive inference for regression. <i>Journal of the American Statistical Association</i>, 113(523), 1094–1111.</li>
+  <li>Norinder, U., Carlsson, L., Boyer, S. &amp; Eklund, M. (2014). Introducing conformal prediction in predictive modeling. <i>Journal of Chemical Information and Modeling</i>, 54(6), 1596–1603.</li>
+  <li>Papadopoulos, H., Proedrou, K., Vovk, V. &amp; Gammerman, A. (2002). Inductive confidence machines for regression. <i>ECML</i>.</li>
+  <li>Quach, V., Fisch, A., Schuster, T., Yala, A., Sohn, J. H., Jaakkola, T. &amp; Barzilay, R. (2024). Conformal language modeling. <i>ICLR</i>.</li>
+  <li>Romano, Y., Patterson, E. &amp; Candès, E. J. (2019). Conformalized quantile regression. <i>NeurIPS</i>.</li>
+  <li>Vovk, V. (2012). Conditional validity of inductive conformal predictors. <i>Asian Conference on Machine Learning (ACML)</i>.</li>
+  <li>Vovk, V., Gammerman, A. &amp; Shafer, G. (2005; 2.ª ed. 2022). <i>Algorithmic Learning in a Random World</i>. Springer.</li>
+  <li>MAPIE: Model Agnostic Prediction Interval Estimator, versión 1.5. github.com/scikit-learn-contrib/MAPIE.</li>
+  <li>Dataset: Shenoy, K. (2020). <i>Credit Card Transactions Fraud Detection Dataset</i>. Kaggle (kartik2112/fraud-detection). Datos simulados.</li>
+</ul>
+
+</body>
+</html>
